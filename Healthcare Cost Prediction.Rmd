@@ -1,0 +1,343 @@
+---
+title: "Stats Computing Project"
+author: "Group 2"
+date: "4/16/2021"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+### Install required packages
+library(ggplot2)
+library(dplyr)
+library(corrgram)
+library(GGally)
+library(grid)
+library(gridExtra)
+library(broom)
+```
+
+Exploratory Data Analysis:
+
+```{r cars}
+# Importing the dataset
+insurance <- read.csv("C:/Users/vashi/Desktop/Syllabus/Spring_2ndHalf/StatsComputing/Project/insurance.csv")
+attach(insurance)
+head(insurance)
+```
+
+Summary of the database:
+
+```{r pressure, echo=FALSE}
+summary(insurance)
+library(dplyr)
+```
+Outliers in our data:
+```{r}
+hist(age,freq= FALSE)
+lines(density(age), lwd=6, col='Red')
+
+nrow(data.frame(boxplot.stats(age)$out))
+boxplot.stats(age)$out
+boxplot(age)
+```
+
+```{r}
+hist(bmi,freq= FALSE, ylim=c(0,0.08))
+lines(density(bmi),lwd=6, col='Red')
+
+nrow(data.frame(boxplot.stats(bmi)$out))
+boxplot.stats(bmi)$out
+boxplot(bmi)
+```
+
+```{r}
+hist(charges,freq= FALSE, ylim=c(0,0.00006))
+lines(density(charges), lwd=6, col='Red')
+
+nrow(data.frame(boxplot.stats(charges)$out))
+boxplot.stats(charges)$out
+boxplot(charges)
+```
+
+
+```{r}
+cor_df <- insurance[,c(1,3,4,7)]
+cor(cor_df)
+```
+Overall we see less correlation between all the variables.
+```{r}
+insurance$sex = factor(insurance$sex)
+
+ 
+
+sex <- insurance %>%
+  group_by(sex) %>%
+  summarise(counts = n())
+
+ 
+
+p <- ggplot(sex, aes(x = sex, y = counts)) +
+  geom_bar(stat="identity")  +
+  geom_text(aes(label = counts), vjust = -0.3)
+p
+```
+
+ 
+
+```{r}
+insurance$smoker = factor(insurance$smoker)
+
+ 
+
+smoker <- insurance %>%
+  group_by(smoker) %>%
+  summarise(counts = n())
+
+ 
+
+q <- ggplot(smoker, aes(x = smoker, y = counts)) +
+  geom_bar(stat="identity")  +
+  geom_text(aes(label = counts), vjust = -0.3)
+q
+```
+
+```{r fig.height=8, fig.width=10}
+
+y <- ggpairs(insurance %>% select(age, bmi, charges, children), mapping = ggplot2::aes(color = insurance$smoker, alpha = 0.4))
+y
+```
+
+
+```{r fig.height=8, fig.width=10}
+library(GGally)
+x <- ggpairs(insurance %>% select(age, bmi, charges, children), mapping = ggplot2::aes(color = region, params=list(size=2),alpha = 0.4)) 
+x
+```
+
+
+```{r fig.height=8, fig.width=10}
+library(GGally)
+a <- ggpairs(insurance %>% select(age, bmi, charges, children), mapping = ggplot2::aes(color = insurance$sex, params=list(corSize=10),alpha = 0.4)) 
+a
+```
+```{r}
+# Check dataset dimensions
+dim(insurance)
+
+# Check for null values
+sum(is.na(insurance))
+```
+```{r}
+# Checking datatype of all columns
+sapply(insurance,class)
+```
+```{r}
+# Converting sex and smoker columns to factor for modelling purpose
+col <- c('sex' ,'smoker')
+insurance[,col] <- lapply(insurance[,col] , factor)
+str(insurance)
+```
+
+
+#### Splitting the data into train-test dataset (70-30)
+
+```{r}
+# Splitting data into 70-30 train-test data
+train_id <- sample(nrow(insurance), .70*nrow(insurance))
+
+insurance_train <- insurance[train_id,]
+insurance_test <- insurance[-train_id,]
+
+nrow(insurance)
+nrow(insurance_train)/nrow(insurance)*100
+nrow(insurance_test)/nrow(insurance)*100
+```
+#### Fitting Linear Regression model on the train dataset
+```{r}
+# Linear Regression model on train data with all predictor variables
+fit1 <- lm(charges ~ age + sex + bmi + children + smoker, data=insurance_train)
+summary(fit1)
+```
+```{r}
+# Linear Regression model on train data without the parameter sex
+fit2 <- lm(charges ~ age + bmi + children + smoker, data=insurance_train)
+summary(fit2)
+```
+```{r}
+# Using partial f-test to check relevance of both models wrt. each other
+anova(fit2, fit1)
+```
+
+```{r}
+# Calculating predicted values for test data
+fit2_preds <- predict(fit2, insurance_test)
+str(fit2_preds)
+```
+```{r}
+# Store residual values
+res_2 <- fit2$residuals
+str(res_2)
+```
+#### Residual diagnostics
+```{r figures side, fig.show="hold", out.width="50%"}
+ggplot(data.frame(res_2), aes(res_2)) + geom_histogram()
+
+```
+
+```{r}
+# Checking for assumption of zero mean using t.test()
+t.test(res_2)
+```
+
+```{r}
+# Creating dataframe for predictions and residuals using augment()
+
+fit2_df <- fit2 %>% 
+	augment() %>%
+	mutate(row_num = 1:n())
+head(fit2_df)
+```
+
+```{r}
+# Q-Q plot
+ggplot(fit2_df, aes(sample = .std.resid)) +
+	geom_qq(alpha = 0.6, size = 1.5) +
+	geom_qq_line(linetype = "dashed", color = "red2") +
+	xlab("Theoretical quantile") +
+	ylab("Sample quantile") +
+	theme_grey()
+
+```
+
+```{r}
+# Fitted vs Residual
+ggplot(fit2, aes(x = .fitted, y =.resid)) +
+	geom_point(alpha = 0.6, size = 1.5) +
+	geom_hline(yintercept = 0, linetype = "dashed", color = "red2") +
+	geom_hline(yintercept = c(-2, 2), linetype = "dotted") +
+	xlab("Fitted value") +
+	ylab(" residual") +
+	theme_grey()
+
+```
+
+
+```{r}
+# Checking for multi-collinearity
+car::vif(fit2)
+```
+Since the VIF (Variance Inflation Factor) is < 10 for all parameters, the assumption of multi-collinearity  has been met.
+
+#### Applying box cox transformation
+```{r}
+# Find optimal lambda value via ML estimation
+bc <- MASS::boxcox(charges ~ age + bmi + children + smoker, data=insurance_train)
+lambda <- bc$x[which.max(bc$y)]
+print(lambda)
+```
+
+
+```{r}
+# boxcox transformed model
+insurance_train$charges2 <- (insurance_train$charges ^ lambda - 1) / lambda
+fit2_bc <- lm(charges2 ~ age + bmi + children + smoker, data=insurance_train)
+summary(fit2_bc)
+```
+```{r}
+# Store residual values
+res_2b <- fit2_bc$residuals
+str(res_2b)
+```
+
+```{r, figures-side, fig.show="hold", out.width="50%"}
+par(mfrow = c(2,4))
+ggplot(data.frame(res_2b), aes(res_2b)) + geom_histogram()
+
+```
+```{r}
+# Creating dataframe for predictions and residuals using augment()
+
+fit2b_df <- fit2_bc %>% 
+	augment() %>%
+	mutate(row_num = 1:n())
+head(fit2b_df)
+```
+```{r}
+# Q-Q plot
+ggplot(fit2b_df, aes(sample = .std.resid)) +
+	geom_qq(alpha = 0.6, size = 1.5) +
+	geom_qq_line(linetype = "dashed", color = "red2") +
+	xlab("Theoretical quantile") +
+	ylab("Sample quantile") +
+	theme_grey()
+
+```
+
+```{r}
+# Fitted vs Residual
+ggplot(fit2_bc, aes(x = .fitted, y =.resid)) +
+	geom_point(alpha = 0.6, size = 1.5) +
+	geom_hline(yintercept = 0, linetype = "dashed", color = "red2") +
+	geom_hline(yintercept = c(-2, 2), linetype = "dotted") +
+	xlab("Fitted value") +
+	ylab(" residual") +
+	theme_grey()
+
+```
+
+
+#### Transforming test data
+```{r}
+insurance_test$charges2 <- (insurance_test$charges ^ lambda - 1) / lambda
+```
+
+```{r}
+# Calculating predicted values for test data
+fit2bc_preds <- predict(fit2_bc, insurance_test)
+str(fit2bc_preds)
+```
+
+#### Calculating model performance metrics
+```{r}
+calc_performance <- function(actual, pred) {
+  
+  rmse <- sqrt(mean((actual - pred)**2))
+  mae <- mean(abs(actual - pred))
+  mape <- mean(abs((actual-pred)/actual))
+  
+  retvals <- list(rmse = rmse, mae = mae, mape = mape)
+  return(retvals)
+}
+```
+
+```{r}
+# Model performance metrics for the model without transformation
+
+metrics_1 <- calc_performance(insurance_test$charges,fit2_preds)
+metrics_1
+```
+
+```{r}
+# Model performance metrics for transformed model
+
+metrics_2 <- calc_performance(insurance_test$charges2,fit2bc_preds)
+metrics_2
+
+```
+
+RMSE values for both the models cannot be compared since the one of them is a transformed one.
+On comparing MAPE (Mean absolute percentage error), we can conclude that the transformed model is significantly better. 
+
+
+
+
+
+
+
+
+
+
+
